@@ -10,8 +10,10 @@ datasource db {
 model Product {
   id        Int      @id @default(autoincrement())
   name      String
-  quantity  Int      @default(0)
-  price     Float    @default(0.0)
+  quantity      Int      @default(0)
+  price         Float    @default(0.0) // This will be the Sale Price
+  purchasePrice Float    @default(0.0)
+  manualPrice   Float    @default(0.0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -22,6 +22,7 @@ export async function addProduct(formData: FormData) {
         const name = formData.get('name') as string
         const quantity = parseInt(formData.get('quantity') as string)
         const price = parseFloat(formData.get('price') as string)
+        const purchasePrice = parseFloat(formData.get('purchasePrice') as string)
 
         if (!name || isNaN(quantity) || isNaN(price)) {
             return { success: false, error: 'Invalid input' }
@@ -32,6 +33,7 @@ export async function addProduct(formData: FormData) {
                 name,
                 quantity,
                 price,
+                purchasePrice: isNaN(purchasePrice) ? 0 : purchasePrice,
             },
         })
 
@@ -40,6 +42,20 @@ export async function addProduct(formData: FormData) {
     } catch (error) {
         console.error('Failed to add product:', error)
         return { success: false, error: 'Failed to add product' }
+    }
+}
+
+export async function updateManualPrice(id: number, price: number) {
+    try {
+        await prisma.product.update({
+            where: { id },
+            data: { manualPrice: price }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to update manual price:', error)
+        return { success: false, error: 'Failed to update manual price' }
     }
 }
 
