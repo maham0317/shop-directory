@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -16,4 +17,24 @@ model Product {
   manualPrice   Float    @default(0.0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Bill {
+  id           Int        @id @default(autoincrement())
+  customerName String?
+  totalAmount  Float
+  items        BillItem[]
+  createdAt    DateTime   @default(now())
+}
+
+model BillItem {
+  id          Int    @id @default(autoincrement())
+  billId      Int
+  bill        Bill   @relation(fields: [billId], references: [id])
+  productId   Int
+  productName String
+  quantity    Int
+  price       Float
+  purchasePrice Float    @default(0.0)
+  total       Float
 }

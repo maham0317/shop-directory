@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, Trash2, Minus } from 'lucide-react'
+import { Search, Trash2, Minus, Plus } from 'lucide-react'
 import { deleteProduct, updateStock, updateManualPrice } from '../actions/inventory'
 
 interface Product {
@@ -124,6 +124,14 @@ export default function ProductTable({ products }: ProductTableProps) {
                                             title="Decrease Stock"
                                         >
                                             <Minus size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleStockChange(product.id, 1)}
+                                            disabled={loadingId === product.id}
+                                            className="p-2 text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                            title="Increase Stock"
+                                        >
+                                            <Plus size={18} />
                                         </button>
                                         <button
                                             onClick={() => handleDelete(product.id)}
