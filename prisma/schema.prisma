@@ -24,6 +24,7 @@ model Bill {
   customerName String?
   totalAmount  Float
   items        BillItem[]
+  status       BillStatus @default(PAID)
   createdAt    DateTime   @default(now())
 }
 
@@ -37,4 +38,11 @@ model BillItem {
   price       Float
   purchasePrice Float    @default(0.0)
   total       Float
+  returnedQuantity Int   @default(0)
+}
+
+enum BillStatus {
+  PAID
+  RETURNED
+  PARTIAL
 }

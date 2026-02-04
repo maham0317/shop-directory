@@ -11,6 +11,7 @@ export default function ReportPage() {
     const [reportData, setReportData] = useState<{
         totalSales: number
         productValue: number
+        returnedAmount: number
         profit: number
         billCount: number
         bills: any[]
@@ -65,7 +66,8 @@ export default function ReportPage() {
         const summaryData = [
             { Metric: 'Period', Value: activeTab.toUpperCase() },
             { Metric: 'Date', Value: currentDate.toLocaleDateString() },
-            { Metric: 'Total Sales', Value: reportData.totalSales },
+            { Metric: 'Total Sales (Net)', Value: reportData.totalSales },
+            { Metric: 'Returns', Value: reportData.returnedAmount },
             { Metric: 'Product Value (Cost)', Value: reportData.productValue },
             { Metric: 'Profit', Value: reportData.profit },
         ]
@@ -145,6 +147,13 @@ export default function ReportPage() {
                     loading={loading}
                     icon={<DollarSign className="w-8 h-8 text-blue-500" />}
                     color="text-blue-600"
+                />
+                <MetricCard
+                    title="Returns"
+                    value={reportData?.returnedAmount}
+                    loading={loading}
+                    icon={<div className="text-red-500 font-bold">↺</div>}
+                    color="text-red-600"
                 />
                 <MetricCard
                     title="Profit"

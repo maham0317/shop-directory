@@ -62,29 +62,43 @@ export async function getSalesReport(date: Date, type: ReportType) {
         }
 
         let totalSales = 0
-        let productValue = 0 // Cost of Goods Sold
+        let returnedAmount = 0
+        let productValue = 0 // Cost of Goods Sold (Net)
 
         bills.forEach(bill => {
-            totalSales += bill.totalAmount
             bill.items.forEach(item => {
+                const quantitySold = item.quantity
+                const quantityReturned = item.returnedQuantity || 0
+                const netQuantity = quantitySold - quantityReturned
+
+                // Gross Sales
+                totalSales += quantitySold * item.price
+
+                // Returns
+                returnedAmount += quantityReturned * item.price
+
+                // COGS (Net)
                 let cost = item.purchasePrice
                 if (cost === 0) {
                     cost = productMap.get(item.productId) || 0
                 }
-                productValue += cost * item.quantity
+                productValue += cost * netQuantity
             })
         })
 
-        const profit = totalSales - productValue
+        const netSales = totalSales - returnedAmount
+        const profit = netSales - productValue
 
         return {
             success: true,
             data: {
-                totalSales,
+                totalSales: netSales, // Reporting Net Sales as the primary "Total Sales" figure
+                grossSales: totalSales,
+                returnedAmount,
                 productValue,
                 profit,
                 billCount: bills.length,
-                bills // Returning bills for detail view or export if needed
+                bills
             }
         }
 

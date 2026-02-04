@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, Trash2, Minus, Plus } from 'lucide-react'
+import { Search, Trash2, Minus, Plus, X } from 'lucide-react'
 import { deleteProduct, updateStock, updateManualPrice } from '../actions/inventory'
 
 interface Product {
@@ -23,6 +23,14 @@ export default function ProductTable({ products }: ProductTableProps) {
     // Local state to track edits before saving
     const [editingPrice, setEditingPrice] = useState<{ id: number, value: string } | null>(null)
 
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+    const [editName, setEditName] = useState('')
+    const [editQuantity, setEditQuantity] = useState('')
+
+    // Restock State
+    const [restockingId, setRestockingId] = useState<number | null>(null)
+    const [restockAmount, setRestockAmount] = useState('')
+
     const filteredProducts = useMemo(() => {
         return products.filter(product =>
             product.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -37,10 +45,15 @@ export default function ProductTable({ products }: ProductTableProps) {
         }
     }
 
-    async function handleStockChange(id: number, change: number) {
+    async function handleRestockSubmit(id: number) {
+        const amount = parseInt(restockAmount)
+        if (isNaN(amount) || amount <= 0) return
+
         setLoadingId(id)
-        await updateStock(id, change)
+        await updateStock(id, amount)
         setLoadingId(null)
+        setRestockingId(null)
+        setRestockAmount('')
     }
 
     async function handlePriceUpdate(id: number, newValue: string) {
@@ -49,6 +62,31 @@ export default function ProductTable({ products }: ProductTableProps) {
             await updateManualPrice(id, price)
         }
         setEditingPrice(null)
+    }
+
+    async function saveEdit() {
+        if (!editingProduct) return
+
+        // Update Name
+        if (editName !== editingProduct.name) {
+            const { updateProductName } = await import('../actions/inventory')
+            await updateProductName(editingProduct.id, editName)
+        }
+
+        // Update Quantity
+        const newQty = parseInt(editQuantity)
+        if (!isNaN(newQty) && newQty !== editingProduct.quantity) {
+            const { updateProductQuantity } = await import('../actions/inventory')
+            await updateProductQuantity(editingProduct.id, newQty)
+        }
+
+        setEditingProduct(null)
+    }
+
+    function startEdit(product: Product) {
+        setEditingProduct(product)
+        setEditName(product.name)
+        setEditQuantity(product.quantity.toString())
     }
 
     return (
@@ -92,56 +130,107 @@ export default function ProductTable({ products }: ProductTableProps) {
                         ) : (
                             filteredProducts.map((product) => (
                                 <tr key={product.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
-                                    <td className="px-6 py-4 text-zinc-900 dark:text-white font-medium">{product.name}</td>
-                                    <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.quantity < 5 ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'}`}>
-                                            {product.quantity}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">{(product.purchasePrice || 0).toFixed(2)}</td>
-                                    <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300 font-semibold">{(product.price || 0).toFixed(2)}</td>
-                                    <td className="px-6 py-4">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={editingPrice?.id === product.id ? editingPrice.value : (product.manualPrice || 0)}
-                                            onFocus={() => setEditingPrice({ id: product.id, value: (product.manualPrice || 0).toString() })}
-                                            onChange={(e) => setEditingPrice({ id: product.id, value: e.target.value })}
-                                            onBlur={(e) => handlePriceUpdate(product.id, e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.currentTarget.blur()
-                                                }
-                                            }}
-                                            className="w-24 px-2 py-1 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                        />
-                                    </td>
-                                    <td className="px-6 py-4 text-right space-x-2">
-                                        <button
-                                            onClick={() => handleStockChange(product.id, -1)}
-                                            disabled={loadingId === product.id || product.quantity <= 0}
-                                            className="p-2 text-zinc-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors disabled:opacity-30"
-                                            title="Decrease Stock"
-                                        >
-                                            <Minus size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleStockChange(product.id, 1)}
-                                            disabled={loadingId === product.id}
-                                            className="p-2 text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-30"
-                                            title="Increase Stock"
-                                        >
-                                            <Plus size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(product.id)}
-                                            disabled={loadingId === product.id}
-                                            className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
-                                            title="Delete Product"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </td>
+                                    {editingProduct?.id === product.id ? (
+                                        <>
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    value={editName}
+                                                    onChange={e => setEditName(e.target.value)}
+                                                    className="w-full px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
+                                                />
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    type="number"
+                                                    value={editQuantity}
+                                                    onChange={e => setEditQuantity(e.target.value)}
+                                                    className="w-20 px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
+                                                />
+                                            </td>
+                                            <td colSpan={3} className="px-6 py-4 text-zinc-500">
+                                                Editing...
+                                            </td>
+                                            <td className="px-6 py-4 text-right space-x-2">
+                                                <button onClick={saveEdit} className="text-green-600 hover:text-green-700 font-medium text-sm">Save</button>
+                                                <button onClick={() => setEditingProduct(null)} className="text-zinc-500 hover:text-zinc-600 font-medium text-sm">Cancel</button>
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className="px-6 py-4 text-zinc-900 dark:text-white font-medium cursor-pointer" onClick={() => startEdit(product)}>
+                                                {product.name}
+                                                <span className="ml-2 text-xs text-zinc-400 hover:underline">(Edit)</span>
+                                            </td>
+                                            <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">
+                                                {restockingId === product.id ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-sm font-bold">{product.quantity} + </span>
+                                                        <input
+                                                            autoFocus
+                                                            type="number"
+                                                            className="w-16 px-1 py-1 text-sm border rounded"
+                                                            placeholder="Add"
+                                                            value={restockAmount}
+                                                            onChange={e => setRestockAmount(e.target.value)}
+                                                            onKeyDown={e => e.key === 'Enter' && handleRestockSubmit(product.id)}
+                                                        />
+                                                        <button onClick={() => handleRestockSubmit(product.id)} className="text-green-600 hover:bg-green-100 p-1 rounded"><Plus size={16} /></button>
+                                                        <button onClick={() => setRestockingId(null)} className="text-red-500 hover:bg-red-100 p-1 rounded"><X size={16} /></button>
+                                                    </div>
+                                                ) : (
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.quantity < 5 ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'}`}>
+                                                        {product.quantity}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">{(product.purchasePrice || 0).toFixed(2)}</td>
+                                            <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300 font-semibold">{(product.price || 0).toFixed(2)}</td>
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={editingPrice?.id === product.id ? editingPrice.value : (product.manualPrice || 0)}
+                                                    onFocus={() => setEditingPrice({ id: product.id, value: (product.manualPrice || 0).toString() })}
+                                                    onChange={(e) => setEditingPrice({ id: product.id, value: e.target.value })}
+                                                    onBlur={(e) => handlePriceUpdate(product.id, e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.currentTarget.blur()
+                                                        }
+                                                    }}
+                                                    className="w-24 px-2 py-1 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                />
+                                            </td>
+                                            <td className="px-6 py-4 text-right space-x-2">
+                                                <button
+                                                    onClick={() => startEdit(product)}
+                                                    className="p-2 text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                                    title="Edit Product"
+                                                >
+                                                    <span className="text-xs font-bold">Edit</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setRestockingId(product.id)
+                                                        setRestockAmount('')
+                                                    }}
+                                                    disabled={loadingId === product.id}
+                                                    className="p-2 text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                                    title="Add Stock"
+                                                >
+                                                    <Plus size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(product.id)}
+                                                    disabled={loadingId === product.id}
+                                                    className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                                    title="Delete Product"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </td>
+                                        </>
+                                    )}
                                 </tr>
                             ))
                         )}

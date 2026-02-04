@@ -69,6 +69,38 @@ export async function updateManualPrice(id: number, price: number) {
     }
 }
 
+
+export async function updateProductName(id: number, name: string) {
+    try {
+        await prisma.product.update({
+            where: { id },
+            data: { name }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to update product name:', error)
+        return { success: false, error: 'Failed to update product name' }
+    }
+}
+
+export async function updateProductQuantity(id: number, newQuantity: number) {
+    try {
+        if (newQuantity < 0) {
+            return { success: false, error: 'Quantity cannot be negative' }
+        }
+        await prisma.product.update({
+            where: { id },
+            data: { quantity: newQuantity }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to update product quantity:', error)
+        return { success: false, error: 'Failed to update product quantity' }
+    }
+}
+
 export async function updateStock(id: number, change: number) {
     try {
         // Current stock check to prevent negative (optional, but good)
@@ -182,5 +214,152 @@ export async function getBills() {
     } catch (error) {
         console.error('Failed to fetch bills:', error)
         return { success: false, error: 'Failed to fetch bills' }
+    }
+}
+
+export async function returnBillFull(billId: number) {
+    try {
+        await prisma.$transaction(async (tx) => {
+            const bill = await tx.bill.findUnique({
+                where: { id: billId },
+                include: { items: true }
+            })
+
+            if (!bill) throw new Error('Bill not found')
+            if (bill.status === 'RETURNED') throw new Error('Bill already returned')
+
+            // 1. Mark bill as returned
+            await tx.bill.update({
+                where: { id: billId },
+                data: { status: 'RETURNED' }
+            })
+
+            // 2. Loop items, return them to stock, update returnedQuantity
+            for (const item of bill.items) {
+                const remainingQty = item.quantity - item.returnedQuantity
+                if (remainingQty > 0) {
+                    // Update BillItem
+                    await tx.billItem.update({
+                        where: { id: item.id },
+                        data: { returnedQuantity: item.quantity }
+                    })
+                    // Update Product Stock
+                    await tx.product.update({
+                        where: { id: item.productId },
+                        data: { quantity: { increment: remainingQty } }
+                    })
+                }
+            }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to return bill:', error)
+        return { success: false, error: error instanceof Error ? error.message : 'Return failed' }
+    }
+}
+
+export async function returnBillItem(itemId: number, returnQty: number) {
+    try {
+        await prisma.$transaction(async (tx) => {
+            const billItem = await tx.billItem.findUnique({
+                where: { id: itemId },
+                include: { bill: true }
+            })
+            if (!billItem) throw new Error('Item not found')
+
+            if (billItem.returnedQuantity + returnQty > billItem.quantity) {
+                throw new Error('Cannot return more than purchased')
+            }
+
+            // 1. Update BillItem
+            await tx.billItem.update({
+                where: { id: itemId },
+                data: { returnedQuantity: { increment: returnQty } }
+            })
+
+            // 2. Update Product Stock
+            await tx.product.update({
+                where: { id: billItem.productId },
+                data: { quantity: { increment: returnQty } }
+            })
+
+            // 3. Check if all items in bill are returned
+            const bill = await tx.bill.findUnique({
+                where: { id: billItem.billId },
+                include: { items: true }
+            })
+
+            if (bill) {
+                const allReturned = bill.items.every(i => i.returnedQuantity >= i.quantity)
+                const anyReturned = bill.items.some(i => i.returnedQuantity > 0)
+
+                let newStatus = bill.status
+                if (allReturned) newStatus = 'RETURNED'
+                else if (anyReturned) newStatus = 'PARTIAL'
+
+                if (newStatus !== bill.status) {
+                    await tx.bill.update({
+                        where: { id: bill.id },
+                        data: { status: newStatus }
+                    })
+                }
+            }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to return item:', error)
+        return { success: false, error: 'Failed to return item' }
+    }
+}
+
+export async function deleteBill(billId: number) {
+    try {
+        await prisma.$transaction(async (tx) => {
+            const bill = await tx.bill.findUnique({
+                where: { id: billId },
+                include: { items: true }
+            })
+
+            if (!bill) throw new Error('Bill not found')
+
+            // Restore stock for items that haven't been returned
+            // If the bill entire status is RETURNED, we probably shouldn't restore again?
+            // If status is RETURNED, stock was already restored.
+            // If status is PARTIAL or PAID, we restore the non-returned amount.
+
+            if (bill.status !== 'RETURNED') {
+                for (const item of bill.items) {
+                    const remainingQty = item.quantity - item.returnedQuantity
+                    if (remainingQty > 0) {
+                        await tx.product.update({
+                            where: { id: item.productId },
+                            data: { quantity: { increment: remainingQty } }
+                        })
+                    }
+                }
+            }
+
+            // Delete Bill Items first (cascade might handle it but good to be explicit or if cascade not set)
+            // Actually Prisma cascade should handle it if relationship is set, but let's just delete the bill
+            // If it fails, we know we need to delete items. Usually cascade is set.
+            // Let's rely on cascade or standard delete. 
+            // Better to delete items explicitly if unsure about schema.
+            // Checking typical Prisma usage, `onDelete: Cascade` logic handles it. 
+            // Assuming schema has it. If not, this might fail. Safe bet: delete items first.
+            await tx.billItem.deleteMany({
+                where: { billId: bill.id }
+            })
+
+            await tx.bill.delete({
+                where: { id: billId }
+            })
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to delete bill:', error)
+        return { success: false, error: 'Failed to delete bill' }
     }
 }

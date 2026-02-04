@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Search, Printer, Plus, Minus, Trash2, ShoppingCart, Save, History, X } from 'lucide-react'
-import { saveBill, getBills } from '../actions/inventory'
+import { Search, Printer, Plus, Minus, Trash2, ShoppingCart, Save, History, X, RefreshCw, AlertTriangle } from 'lucide-react'
+import { saveBill, getBills, returnBillFull, returnBillItem, deleteBill } from '../actions/inventory'
 
 interface Product {
     id: number
@@ -20,12 +20,23 @@ interface CartItem {
     price: number // This can be edited
 }
 
+interface BillItem {
+    id: number
+    productId: number
+    productName: string
+    quantity: number
+    returnedQuantity: number
+    price: number
+    total: number
+}
+
 interface Bill {
     id: number
     customerName: string | null
     totalAmount: number
+    status: 'PAID' | 'RETURNED' | 'PARTIAL'
     createdAt: Date
-    items: any[]
+    items: BillItem[]
 }
 
 interface BillingSectionProps {
@@ -44,11 +55,21 @@ export default function BillingSection({ products }: BillingSectionProps) {
     const [showHistory, setShowHistory] = useState(false)
     const [recentBills, setRecentBills] = useState<Bill[]>([])
     const [customerName, setCustomerName] = useState('')
+    const [billToPrint, setBillToPrint] = useState<Bill | null>(null)
 
     // Filter products for the search dropdown
     const productOptions = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
+
+    useEffect(() => {
+        if (billToPrint) {
+            setTimeout(() => {
+                window.print()
+                setTimeout(() => setBillToPrint(null), 500) // Reset after print dialog likely opens
+            }, 100)
+        }
+    }, [billToPrint])
 
     function addToCart() {
         if (!selectedProduct) return
@@ -67,6 +88,10 @@ export default function BillingSection({ products }: BillingSectionProps) {
         setCart(prev => [...prev, newItem])
 
         // Reset inputs
+        closeSelection()
+    }
+
+    function closeSelection() {
         setSelectedProduct(null)
         setSearchTerm('')
         setQtyDetails(1)
@@ -139,11 +164,60 @@ export default function BillingSection({ products }: BillingSectionProps) {
         setShowHistory(true)
         const res = await getBills()
         if (res.success && res.data) {
-            setRecentBills(res.data)
+            // @ts-ignore - Prisma returns simplified objects, manual cast/check might be needed if types are strict
+            setRecentBills(res.data as unknown as Bill[])
         }
     }
 
-    const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    async function handleReturnBill(billId: number) {
+        if (!confirm('Are you sure you want to return this ENTIRE bill? Stock will be restored.')) return
+        const res = await returnBillFull(billId)
+        if (res.success) {
+            alert('Bill successfully returned.')
+            fetchHistory() // Refresh
+        } else {
+            alert('Failed to return bill.')
+        }
+    }
+
+    async function handleReturnItem(itemId: number) {
+        const qtyStr = prompt('How many items to return?')
+        if (!qtyStr) return
+        const qty = parseInt(qtyStr)
+        if (isNaN(qty) || qty <= 0) return
+
+        const res = await returnBillItem(itemId, qty)
+        if (res.success) {
+            alert('Item returned successfully.')
+            fetchHistory()
+        } else {
+            alert(typeof res.error === 'string' ? res.error : 'Failed to return item.')
+        }
+    }
+
+    async function handleDeleteBill(billId: number) {
+        if (!confirm('Are you sure you want to DELETE this bill permanently? This will restore stock for non-returned items and remove the sales record.')) return
+        const res = await deleteBill(billId)
+        if (res.success) {
+            alert('Bill deleted successfully.')
+            fetchHistory()
+        } else {
+            alert('Failed to delete bill.')
+        }
+    }
+
+    // Prepare data for the printable area
+    // It can be either the current cart OR a past bill being printed
+    const printItems = billToPrint
+        ? billToPrint.items.map(i => ({ name: i.productName, quantity: i.quantity, price: i.price, total: i.total }))
+        : cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.price * i.quantity }))
+
+    const printTotal = billToPrint
+        ? billToPrint.totalAmount
+        : cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+
+    const printCustomer = billToPrint ? billToPrint.customerName : customerName
+    const printDate = billToPrint ? new Date(billToPrint.createdAt) : new Date()
 
     return (
         <div className="mt-8 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -198,10 +272,17 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                 )}
                             </div>
                         )}
+                        {/* Overlay to close search */}
+                        {searchTerm && !selectedProduct && (
+                            <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setSearchTerm('')} />
+                        )}
                     </div>
 
                     {selectedProduct && (
-                        <div className="bg-purple-50 dark:bg-purple-900/10 rounded-xl p-6 border border-purple-100 dark:border-purple-900/20 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="bg-purple-50 dark:bg-purple-900/10 rounded-xl p-6 border border-purple-100 dark:border-purple-900/20 animate-in fade-in slide-in-from-top-4 duration-300 relative">
+                            <button onClick={closeSelection} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600">
+                                <X size={20} />
+                            </button>
                             <h3 className="font-bold text-lg text-purple-900 dark:text-purple-100 mb-4">{selectedProduct.name}</h3>
                             <div className="grid grid-cols-2 gap-4 mb-6">
                                 <div>
@@ -210,7 +291,9 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                         type="number"
                                         min="1"
                                         value={qtyDetails}
-                                        onChange={(e) => setQtyDetails(parseInt(e.target.value) || 1)}
+                                        onFocus={(e) => e.target.select()}
+                                        onClick={(e) => e.currentTarget.select()}
+                                        onChange={(e) => setQtyDetails(parseInt(e.target.value) || 0)}
                                         className="w-full px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-500 outline-none"
                                     />
                                 </div>
@@ -220,6 +303,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                         type="number"
                                         step="0.01"
                                         value={manualPriceOverride}
+                                        onFocus={(e) => e.target.select()}
                                         onChange={(e) => setManualPriceOverride(e.target.value)}
                                         className="w-full px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-500 outline-none"
                                     />
@@ -250,7 +334,8 @@ export default function BillingSection({ products }: BillingSectionProps) {
                     </div>
 
                     {/* Printable Section */}
-                    <div id="printable-bill" className="flex-1 bg-white p-6 shadow-sm mb-6 font-mono text-sm leading-relaxed text-zinc-900">
+                    <div id="printable-bill" className="flex-1 bg-white p-6 shadow-sm mb-6 font-mono text-sm leading-relaxed text-zinc-900 relative">
+                        {/* Print Only Header Info */}
                         <div className="text-center mb-6 border-b-2 border-dashed border-zinc-300 pb-4">
                             <h1 className="text-2xl font-bold uppercase tracking-wider mb-1">MH</h1>
                             <p className="text-sm font-bold text-zinc-700">Stationery And Accessories</p>
@@ -258,7 +343,9 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                 Arain Building Chowk near Ashfaq General Store, Bilal Gunj, Data Gunj Baksh Town, Lahore
                             </p>
                             <p className="text-xs text-zinc-500 mt-1 font-semibold">0310-1476667 Muhammad Hassan</p>
-                            {customerName && <p className="text-xs text-zinc-800 mt-2 border-t border-dashed border-zinc-300 pt-1">Customer: {customerName}</p>}
+                            {/* Date logic matching the printed bill or current time */}
+                            <p className="text-xs text-zinc-400 mt-1">{printDate.toLocaleString()}</p>
+                            {printCustomer && <p className="text-xs text-zinc-800 mt-2 border-t border-dashed border-zinc-300 pt-1">Customer: {printCustomer}</p>}
                         </div>
 
                         <div className="mb-4">
@@ -269,42 +356,49 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                         <th className="pb-2 text-center">Qty</th>
                                         <th className="pb-2 text-right">Price</th>
                                         <th className="pb-2 text-right">Total</th>
-                                        <th className="pb-2 text-center w-10"></th>
+                                        <th className="pb-2 text-center w-10 no-print"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {cart.map((item, idx) => (
+                                    {printItems.map((item, idx) => (
                                         <tr key={idx} className="border-b border-zinc-100/50 group hover:bg-zinc-50 transition-colors">
                                             <td className="py-2 pl-2 pr-2 font-medium text-zinc-700">{item.name}</td>
                                             <td className="py-2 text-center">
-                                                <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-md px-2 py-1 w-fit mx-auto">
-                                                    <button
-                                                        onClick={() => updateQuantity(idx, -1)}
-                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-red-500 hover:bg-red-50 shadow-sm transition-all"
-                                                        title="Decrease"
-                                                    >
-                                                        <Minus size={14} />
-                                                    </button>
-                                                    <span className="w-6 text-center font-bold text-zinc-800">{item.quantity}</span>
-                                                    <button
-                                                        onClick={() => updateQuantity(idx, 1)}
-                                                        className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-green-500 hover:bg-green-50 shadow-sm transition-all"
-                                                        title="Increase"
-                                                    >
-                                                        <Plus size={14} />
-                                                    </button>
-                                                </div>
+                                                {/* Logic to hide +/- buttons when printing or if it's a past bill */}
+                                                {!billToPrint ? (
+                                                    <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-md px-2 py-1 w-fit mx-auto no-print-bg">
+                                                        <button
+                                                            onClick={() => updateQuantity(idx, -1)}
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-red-500 hover:bg-red-50 shadow-sm transition-all no-print"
+                                                            title="Decrease"
+                                                        >
+                                                            <Minus size={14} />
+                                                        </button>
+                                                        <span className="min-w-[1.5rem] text-center font-bold text-zinc-800">{item.quantity}</span>
+                                                        <button
+                                                            onClick={() => updateQuantity(idx, 1)}
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-green-500 hover:bg-green-50 shadow-sm transition-all no-print"
+                                                            title="Increase"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="font-bold text-zinc-800">{item.quantity}</span>
+                                                )}
                                             </td>
                                             <td className="py-2 text-right text-zinc-600">{item.price.toFixed(2)}</td>
-                                            <td className="py-2 text-right font-semibold text-zinc-900">{(item.price * item.quantity).toFixed(2)}</td>
-                                            <td className="py-2 text-center">
-                                                <button
-                                                    onClick={() => removeFromCart(idx)}
-                                                    className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                                    title="Remove Item"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                            <td className="py-2 text-right font-semibold text-zinc-900">{item.total.toFixed(2)}</td>
+                                            <td className="py-2 text-center no-print">
+                                                {!billToPrint && (
+                                                    <button
+                                                        onClick={() => removeFromCart(idx)}
+                                                        className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                                                        title="Remove Item"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -315,7 +409,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
                         <div className="mr-0 ml-auto w-1/2 border-t-2 border-zinc-900 pt-2 mt-4 space-y-1">
                             <div className="flex justify-between font-bold text-lg">
                                 <span>TOTAL:</span>
-                                <span>{totalAmount.toFixed(2)}</span>
+                                <span>{printTotal.toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -364,6 +458,14 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                     top: 0;
                                     width: 100%;
                                     box-shadow: none;
+                                    padding: 0;
+                                    margin: 0;
+                                }
+                                .no-print {
+                                    display: none !important;
+                                }
+                                .no-print-bg {
+                                    background: none !important;
                                 }
                             }
                          `}</style>
@@ -423,26 +525,49 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                                 </h4>
                                                 <div className="space-y-3 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
                                                     {group.bills.map(bill => (
-                                                        <div key={bill.id} className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors bg-white dark:bg-black/20">
+                                                        <div key={bill.id} className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors bg-white dark:bg-black/20 ${bill.status === 'RETURNED' ? 'border-red-200 bg-red-50/50 dark:border-red-900/30' : 'border-zinc-200 dark:border-zinc-800'}`}>
                                                             <div className="flex justify-between items-start mb-2">
                                                                 <div>
                                                                     <div className="flex items-center gap-2">
                                                                         <p className="font-bold text-zinc-900 dark:text-white">Bill #{bill.id}</p>
+                                                                        {bill.status === 'RETURNED' && <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">RETURNED</span>}
+                                                                        {bill.status === 'PARTIAL' && <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">PARTIAL RETURN</span>}
                                                                         <span className="text-xs text-zinc-400 font-mono">
                                                                             {new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                         </span>
                                                                     </div>
                                                                     <p className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">{bill.customerName || 'Walk-in'}</p>
                                                                 </div>
-                                                                <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                                                    {bill.totalAmount.toFixed(2)}
-                                                                </p>
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                                                        {bill.totalAmount.toFixed(2)}
+                                                                    </p>
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={() => setBillToPrint(bill)} className="p-1.5 text-zinc-500 hover:text-purple-600 hover:bg-purple-50 rounded" title="Print Bill">
+                                                                            <Printer size={16} />
+                                                                        </button>
+                                                                        {bill.status !== 'RETURNED' && (
+                                                                            <button onClick={() => handleReturnBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded" title="Return Entire Bill">
+                                                                                <RefreshCw size={16} />
+                                                                            </button>
+                                                                        )}
+                                                                        <button onClick={() => handleDeleteBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded" title="Delete Bill">
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                             <div className="mt-2 text-sm text-zinc-500 border-t border-zinc-100 dark:border-zinc-800 pt-2">
                                                                 <div className="flex flex-col gap-1">
-                                                                    {bill.items.map((i: any, idx: number) => (
-                                                                        <div key={idx} className="flex justify-between">
+                                                                    {bill.items.map((i, idx) => (
+                                                                        <div key={idx} className="flex justify-between items-center bg-zinc-50/50 p-1 rounded">
                                                                             <span>{i.quantity} x {i.productName}</span>
+                                                                            <div className="flex items-center gap-2">
+                                                                                {i.returnedQuantity > 0 && <span className="text-xs text-red-500 font-medium">(-{i.returnedQuantity} returned)</span>}
+                                                                                {bill.status !== 'RETURNED' && i.quantity > i.returnedQuantity && (
+                                                                                    <button onClick={() => handleReturnItem(i.id)} className="text-xs text-orange-600 hover:underline">Return Item</button>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
                                                                     ))}
                                                                 </div>
