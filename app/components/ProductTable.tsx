@@ -136,7 +136,8 @@ export default function ProductTable({ products }: ProductTableProps) {
                                                 <input
                                                     value={editName}
                                                     onChange={e => setEditName(e.target.value)}
-                                                    className="w-full px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
+                                                    placeholder="Product Name"
+                                                    className="w-full px-2 py-1 rounded border border-blue-300 dark:border-blue-700 bg-blue-50/10 dark:bg-blue-900/10 focus:ring-2 focus:ring-blue-500 outline-none"
                                                 />
                                             </td>
                                             <td className="px-6 py-4">
@@ -163,19 +164,29 @@ export default function ProductTable({ products }: ProductTableProps) {
                                             </td>
                                             <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">
                                                 {restockingId === product.id ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-sm font-bold">{product.quantity} + </span>
+                                                    <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 shadow-lg p-2 rounded-lg absolute z-10 border border-zinc-200 dark:border-zinc-700 min-w-[200px]">
+                                                        <span className="text-sm font-bold whitespace-nowrap">{product.quantity} + </span>
                                                         <input
                                                             autoFocus
                                                             type="number"
-                                                            className="w-16 px-1 py-1 text-sm border rounded"
-                                                            placeholder="Add"
+                                                            className="w-20 px-2 py-1 text-sm border-2 border-green-500 rounded bg-white dark:bg-zinc-900 outline-none"
+                                                            placeholder="Qty"
                                                             value={restockAmount}
                                                             onChange={e => setRestockAmount(e.target.value)}
                                                             onKeyDown={e => e.key === 'Enter' && handleRestockSubmit(product.id)}
                                                         />
-                                                        <button onClick={() => handleRestockSubmit(product.id)} className="text-green-600 hover:bg-green-100 p-1 rounded"><Plus size={16} /></button>
-                                                        <button onClick={() => setRestockingId(null)} className="text-red-500 hover:bg-red-100 p-1 rounded"><X size={16} /></button>
+                                                        <button
+                                                            onClick={() => handleRestockSubmit(product.id)}
+                                                            className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded transition-colors"
+                                                        >
+                                                            <Plus size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setRestockingId(null)}
+                                                            className="text-zinc-400 hover:text-zinc-600 p-1 rounded"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${product.quantity < 5 ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'}`}>
@@ -204,7 +215,7 @@ export default function ProductTable({ products }: ProductTableProps) {
                                             <td className="px-6 py-4 text-right space-x-2">
                                                 <button
                                                     onClick={() => startEdit(product)}
-                                                    className="p-2 text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                                    className="flex-1 flex items-center justify-center gap-1 p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                                                     title="Edit Product"
                                                 >
                                                     <span className="text-xs font-bold">Edit</span>
@@ -215,15 +226,16 @@ export default function ProductTable({ products }: ProductTableProps) {
                                                         setRestockAmount('')
                                                     }}
                                                     disabled={loadingId === product.id}
-                                                    className="p-2 text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                                    className="flex-1 flex items-center justify-center gap-1 p-2 text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-30"
                                                     title="Add Stock"
                                                 >
-                                                    <Plus size={18} />
+                                                    <Plus size={16} />
+                                                    <span className="text-xs font-bold">Stock</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(product.id)}
                                                     disabled={loadingId === product.id}
-                                                    className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
                                                     title="Delete Product"
                                                 >
                                                     <Trash2 size={18} />

@@ -53,10 +53,13 @@ export default function ReportPage() {
                 'Customer': bill.customerName,
                 'Product': item.productName,
                 'Quantity': item.quantity,
+                'Returned Qty': item.returnedQuantity || 0,
                 'Sale Price': item.price,
                 'Purchase Price': item.purchasePrice,
                 'Total': item.total,
-                'Profit': item.total - (item.purchasePrice * item.quantity)
+                'Returned Amount': (item.returnedQuantity || 0) * item.price,
+                'Net Total': item.total - ((item.returnedQuantity || 0) * item.price),
+                'Profit': (item.total - ((item.returnedQuantity || 0) * item.price)) - (item.purchasePrice * (item.quantity - (item.returnedQuantity || 0)))
             }))
         )
 

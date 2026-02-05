@@ -219,6 +219,18 @@ export default function BillingSection({ products }: BillingSectionProps) {
     const printCustomer = billToPrint ? billToPrint.customerName : customerName
     const printDate = billToPrint ? new Date(billToPrint.createdAt) : new Date()
 
+    // Close search on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            const target = event.target as HTMLElement
+            if (!target.closest('.search-container') && searchTerm && !selectedProduct) {
+                setSearchTerm('')
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [searchTerm, selectedProduct])
+
     return (
         <div className="mt-8 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
             <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-purple-50 to-white dark:from-purple-900/10 dark:to-zinc-800/50 flex justify-between items-center">
@@ -237,7 +249,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
             <div className="p-6 grid lg:grid-cols-2 gap-8">
                 {/* Product Selection Area */}
                 <div className="space-y-6">
-                    <div className="space-y-2 relative">
+                    <div className="space-y-2 relative search-container">
                         <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Select Product</label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
@@ -250,7 +262,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
                             />
                         </div>
                         {/* Dropdown results */}
-                        {searchTerm && (
+                        {searchTerm && !selectedProduct && (
                             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 z-50 max-h-60 overflow-y-auto">
                                 {productOptions.length > 0 ? (
                                     productOptions.map(product => (
@@ -366,10 +378,10 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                             <td className="py-2 text-center">
                                                 {/* Logic to hide +/- buttons when printing or if it's a past bill */}
                                                 {!billToPrint ? (
-                                                    <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-md px-2 py-1 w-fit mx-auto no-print-bg">
+                                                    <div className="flex items-center justify-center gap-2 bg-zinc-100 rounded-md px-2 py-1 w-fit mx-auto print:hidden">
                                                         <button
                                                             onClick={() => updateQuantity(idx, -1)}
-                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-red-500 hover:bg-red-50 shadow-sm transition-all no-print"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-red-500 hover:bg-red-50 shadow-sm transition-all"
                                                             title="Decrease"
                                                         >
                                                             <Minus size={14} />
@@ -377,7 +389,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                                         <span className="min-w-[1.5rem] text-center font-bold text-zinc-800">{item.quantity}</span>
                                                         <button
                                                             onClick={() => updateQuantity(idx, 1)}
-                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-green-500 hover:bg-green-50 shadow-sm transition-all no-print"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-white text-zinc-600 hover:text-green-500 hover:bg-green-50 shadow-sm transition-all"
                                                             title="Increase"
                                                         >
                                                             <Plus size={14} />
@@ -461,12 +473,6 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                     padding: 0;
                                     margin: 0;
                                 }
-                                .no-print {
-                                    display: none !important;
-                                }
-                                .no-print-bg {
-                                    background: none !important;
-                                }
                             }
                          `}</style>
                     </div>
@@ -543,16 +549,19 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                                                         {bill.totalAmount.toFixed(2)}
                                                                     </p>
                                                                     <div className="flex gap-2">
-                                                                        <button onClick={() => setBillToPrint(bill)} className="p-1.5 text-zinc-500 hover:text-purple-600 hover:bg-purple-50 rounded" title="Print Bill">
+                                                                        <button onClick={() => setBillToPrint(bill)} className="p-1.5 text-zinc-500 hover:text-purple-600 hover:bg-purple-50 rounded flex items-center gap-1 bg-gray-50 border border-gray-200" title="Print Bill">
                                                                             <Printer size={16} />
+                                                                            <span className="text-xs font-medium">Print</span>
                                                                         </button>
                                                                         {bill.status !== 'RETURNED' && (
-                                                                            <button onClick={() => handleReturnBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded" title="Return Entire Bill">
+                                                                            <button onClick={() => handleReturnBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-orange-600 hover:bg-orange-50 rounded flex items-center gap-1 bg-gray-50 border border-gray-200" title="Return Entire Bill">
                                                                                 <RefreshCw size={16} />
+                                                                                <span className="text-xs font-medium">Return</span>
                                                                             </button>
                                                                         )}
-                                                                        <button onClick={() => handleDeleteBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded" title="Delete Bill">
+                                                                        <button onClick={() => handleDeleteBill(bill.id)} className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded flex items-center gap-1 bg-gray-50 border border-gray-200" title="Delete Bill">
                                                                             <Trash2 size={16} />
+                                                                            <span className="text-xs font-medium">Delete</span>
                                                                         </button>
                                                                     </div>
                                                                 </div>
@@ -565,7 +574,12 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                                                             <div className="flex items-center gap-2">
                                                                                 {i.returnedQuantity > 0 && <span className="text-xs text-red-500 font-medium">(-{i.returnedQuantity} returned)</span>}
                                                                                 {bill.status !== 'RETURNED' && i.quantity > i.returnedQuantity && (
-                                                                                    <button onClick={() => handleReturnItem(i.id)} className="text-xs text-orange-600 hover:underline">Return Item</button>
+                                                                                    <button
+                                                                                        onClick={() => handleReturnItem(i.id)}
+                                                                                        className="px-2 py-1 text-xs font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded transition-colors"
+                                                                                    >
+                                                                                        Return Item
+                                                                                    </button>
                                                                                 )}
                                                                             </div>
                                                                         </div>
