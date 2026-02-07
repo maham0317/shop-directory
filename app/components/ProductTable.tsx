@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, Trash2, Minus, Plus, X } from 'lucide-react'
-import { deleteProduct, updateStock, updateManualPrice } from '../actions/inventory'
+import { Search, Trash2, Minus, Plus, X, ChevronDown, Edit2 } from 'lucide-react'
+import { deleteProduct, updateStock, updateManualPrice, updateProductName, updateProductQuantity } from '../actions/inventory'
 
 interface Product {
     id: number
@@ -31,11 +31,20 @@ export default function ProductTable({ products }: ProductTableProps) {
     const [restockingId, setRestockingId] = useState<number | null>(null)
     const [restockAmount, setRestockAmount] = useState('')
 
+    // Pagination State
+    const [visibleCount, setVisibleCount] = useState(50)
+
     const filteredProducts = useMemo(() => {
         return products.filter(product =>
             product.name.toLowerCase().includes(searchTerm.toLowerCase())
         )
     }, [products, searchTerm])
+
+    const visibleProducts = filteredProducts.slice(0, visibleCount)
+
+    function handleLoadMore() {
+        setVisibleCount(prev => prev + 50)
+    }
 
     async function handleDelete(id: number) {
         if (confirm('Are you sure you want to delete this product?')) {
@@ -69,14 +78,12 @@ export default function ProductTable({ products }: ProductTableProps) {
 
         // Update Name
         if (editName !== editingProduct.name) {
-            const { updateProductName } = await import('../actions/inventory')
             await updateProductName(editingProduct.id, editName)
         }
 
         // Update Quantity
         const newQty = parseInt(editQuantity)
         if (!isNaN(newQty) && newQty !== editingProduct.quantity) {
-            const { updateProductQuantity } = await import('../actions/inventory')
             await updateProductQuantity(editingProduct.id, newQty)
         }
 
@@ -102,7 +109,10 @@ export default function ProductTable({ products }: ProductTableProps) {
                         type="text"
                         placeholder="Search products..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                            setSearchTerm(e.target.value)
+                            setVisibleCount(50) // Reset pagination on search
+                        }}
                         className="w-full pl-10 pr-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm"
                     />
                 </div>
@@ -121,14 +131,14 @@ export default function ProductTable({ products }: ProductTableProps) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                        {filteredProducts.length === 0 ? (
+                        {visibleProducts.length === 0 ? (
                             <tr>
                                 <td colSpan={6} className="px-6 py-8 text-center text-zinc-500">
                                     No products found.
                                 </td>
                             </tr>
                         ) : (
-                            filteredProducts.map((product) => (
+                            visibleProducts.map((product) => (
                                 <tr key={product.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
                                     {editingProduct?.id === product.id ? (
                                         <>
@@ -160,7 +170,11 @@ export default function ProductTable({ products }: ProductTableProps) {
                                         <>
                                             <td className="px-6 py-4 text-zinc-900 dark:text-white font-medium cursor-pointer" onClick={() => startEdit(product)}>
                                                 {product.name}
-                                                <span className="ml-2 text-xs text-zinc-400 hover:underline">(Edit)</span>
+                                                <div className="flex gap-2 items-center mt-1">
+                                                    <span className="text-[10px] text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 hover:border-blue-300 transition-colors">
+                                                        Click to Edit
+                                                    </span>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-zinc-600 dark:text-zinc-300">
                                                 {restockingId === product.id ? (
@@ -213,33 +227,34 @@ export default function ProductTable({ products }: ProductTableProps) {
                                                 />
                                             </td>
                                             <td className="px-6 py-4 text-right space-x-2">
-                                                <button
-                                                    onClick={() => startEdit(product)}
-                                                    className="flex-1 flex items-center justify-center gap-1 p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-                                                    title="Edit Product"
-                                                >
-                                                    <span className="text-xs font-bold">Edit</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setRestockingId(product.id)
-                                                        setRestockAmount('')
-                                                    }}
-                                                    disabled={loadingId === product.id}
-                                                    className="flex-1 flex items-center justify-center gap-1 p-2 text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-30"
-                                                    title="Add Stock"
-                                                >
-                                                    <Plus size={16} />
-                                                    <span className="text-xs font-bold">Stock</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(product.id)}
-                                                    disabled={loadingId === product.id}
-                                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
-                                                    title="Delete Product"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => startEdit(product)}
+                                                        className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                                                        title="Edit Product"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setRestockingId(product.id)
+                                                            setRestockAmount('')
+                                                        }}
+                                                        disabled={loadingId === product.id}
+                                                        className="p-2 text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-30"
+                                                        title="Add Stock"
+                                                    >
+                                                        <Plus size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(product.id)}
+                                                        disabled={loadingId === product.id}
+                                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-30"
+                                                        title="Delete Product"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </>
                                     )}
@@ -249,6 +264,17 @@ export default function ProductTable({ products }: ProductTableProps) {
                     </tbody>
                 </table>
             </div>
+
+            {visibleCount < filteredProducts.length && (
+                <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-center bg-zinc-50 dark:bg-zinc-900/50">
+                    <button
+                        onClick={handleLoadMore}
+                        className="flex items-center gap-2 px-6 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-all"
+                    >
+                        <ChevronDown size={16} /> Load More Products
+                    </button>
+                </div>
+            )}
         </div>
     )
 }

@@ -65,24 +65,55 @@ export async function getSalesReport(date: Date, type: ReportType) {
         let returnedAmount = 0
         let productValue = 0 // Cost of Goods Sold (Net)
 
+        const productStats = new Map<number, {
+            name: string,
+            quantity: number,
+            returned: number,
+            revenue: number,
+            cost: number,
+            profit: number
+        }>()
+
         bills.forEach(bill => {
             bill.items.forEach(item => {
                 const quantitySold = item.quantity
                 const quantityReturned = item.returnedQuantity || 0
                 const netQuantity = quantitySold - quantityReturned
 
-                // Gross Sales
-                totalSales += quantitySold * item.price
+                // Gross Sales (Total value of items sold)
+                const itemGross = quantitySold * item.price
+                totalSales += itemGross
 
-                // Returns
-                returnedAmount += quantityReturned * item.price
+                // Returns Value
+                const itemReturnedVal = quantityReturned * item.price
+                returnedAmount += itemReturnedVal
 
                 // COGS (Net)
-                let cost = item.purchasePrice
-                if (cost === 0) {
-                    cost = productMap.get(item.productId) || 0
+                let unitCost = item.purchasePrice
+                if (unitCost === 0) {
+                    unitCost = productMap.get(item.productId) || 0 // Fallback
                 }
-                productValue += cost * netQuantity
+                const itemCost = unitCost * netQuantity
+                productValue += itemCost
+
+                // Per Product Stats
+                const existing = productStats.get(item.productId) || {
+                    name: item.productName,
+                    quantity: 0,
+                    returned: 0,
+                    revenue: 0,
+                    cost: 0,
+                    profit: 0
+                }
+
+                existing.quantity += quantitySold
+                existing.returned += quantityReturned
+                existing.revenue += (itemGross - itemReturnedVal)
+                existing.cost += itemCost
+                // Profit = Net Revenue - Cost
+                existing.profit = existing.revenue - existing.cost
+
+                productStats.set(item.productId, existing)
             })
         })
 
@@ -92,18 +123,64 @@ export async function getSalesReport(date: Date, type: ReportType) {
         return {
             success: true,
             data: {
-                totalSales: netSales, // Reporting Net Sales as the primary "Total Sales" figure
+                totalSales: netSales,
                 grossSales: totalSales,
                 returnedAmount,
                 productValue,
                 profit,
                 billCount: bills.length,
-                bills
+                bills,
+                productBreakdown: Array.from(productStats.values()).sort((a, b) => b.revenue - a.revenue)
             }
         }
 
     } catch (error) {
         console.error('Failed to generate sales report:', error)
         return { success: false, error: 'Failed to generate sales report' }
+    }
+}
+
+export async function saveMonthlySnapshot(month: number, year: number, data: { totalSales: number, totalProfit: number, totalReturns: number }) {
+    try {
+        await prisma.monthlyReport.upsert({
+            where: {
+                month_year: {
+                    month,
+                    year
+                }
+            },
+            update: {
+                totalSales: data.totalSales,
+                totalProfit: data.totalProfit,
+                totalReturns: data.totalReturns,
+                createdAt: new Date()
+            },
+            create: {
+                month,
+                year,
+                totalSales: data.totalSales,
+                totalProfit: data.totalProfit,
+                totalReturns: data.totalReturns
+            }
+        })
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to create snapshot:', error)
+        return { success: false, error: 'Failed to save snapshot' }
+    }
+}
+
+export async function getMonthlySnapshots() {
+    try {
+        const reports = await prisma.monthlyReport.findMany({
+            orderBy: [
+                { year: 'desc' },
+                { month: 'desc' }
+            ]
+        })
+        return { success: true, data: reports }
+    } catch (error) {
+        console.error('Failed to get snapshots:', error)
+        return { success: false, error: 'Failed to get saved reports' }
     }
 }

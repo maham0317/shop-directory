@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Search, Printer, Plus, Minus, Trash2, ShoppingCart, Save, History, X, RefreshCw, AlertTriangle } from 'lucide-react'
-import { saveBill, getBills, returnBillFull, returnBillItem, deleteBill } from '../actions/inventory'
+import { saveBill, getBills, returnBillFull, returnBillItem, deleteBill, updateBillName } from '../actions/inventory'
 
 interface Product {
     id: number
@@ -47,7 +47,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
     const [cart, setCart] = useState<CartItem[]>([])
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-    const [qtyDetails, setQtyDetails] = useState(1)
+    const [qtyDetails, setQtyDetails] = useState<string>('1') // Changed to string for easier input
     const [manualPriceOverride, setManualPriceOverride] = useState<string>('')
 
     // New States
@@ -56,6 +56,10 @@ export default function BillingSection({ products }: BillingSectionProps) {
     const [recentBills, setRecentBills] = useState<Bill[]>([])
     const [customerName, setCustomerName] = useState('')
     const [billToPrint, setBillToPrint] = useState<Bill | null>(null)
+
+    // Bill Editing States
+    const [editingBillId, setEditingBillId] = useState<number | null>(null)
+    const [editBillName, setEditBillName] = useState('')
 
     // Filter products for the search dropdown
     const productOptions = products.filter(p =>
@@ -74,6 +78,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
     function addToCart() {
         if (!selectedProduct) return
 
+        const qty = parseInt(qtyDetails) || 1
         const priceToUse = manualPriceOverride
             ? parseFloat(manualPriceOverride)
             : (selectedProduct.manualPrice > 0 ? selectedProduct.manualPrice : selectedProduct.price)
@@ -81,7 +86,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
         const newItem: CartItem = {
             productId: selectedProduct.id,
             name: selectedProduct.name,
-            quantity: qtyDetails,
+            quantity: qty,
             price: priceToUse
         }
 
@@ -94,7 +99,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
     function closeSelection() {
         setSelectedProduct(null)
         setSearchTerm('')
-        setQtyDetails(1)
+        setQtyDetails('1')
         setManualPriceOverride('')
     }
 
@@ -164,7 +169,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
         setShowHistory(true)
         const res = await getBills()
         if (res.success && res.data) {
-            // @ts-ignore - Prisma returns simplified objects, manual cast/check might be needed if types are strict
+            // @ts-ignore
             setRecentBills(res.data as unknown as Bill[])
         }
     }
@@ -206,6 +211,17 @@ export default function BillingSection({ products }: BillingSectionProps) {
         }
     }
 
+    async function handleUpdateBillName(billId: number) {
+        if (!editBillName.trim()) return
+        const res = await updateBillName(billId, editBillName)
+        if (res.success) {
+            setEditingBillId(null)
+            fetchHistory()
+        } else {
+            alert('Failed to update name')
+        }
+    }
+
     // Prepare data for the printable area
     // It can be either the current cart OR a past bill being printed
     const printItems = billToPrint
@@ -225,6 +241,10 @@ export default function BillingSection({ products }: BillingSectionProps) {
             const target = event.target as HTMLElement
             if (!target.closest('.search-container') && searchTerm && !selectedProduct) {
                 setSearchTerm('')
+            }
+            // Close selected product if clicking outside content
+            if (!target.closest('.selected-product-container') && selectedProduct) {
+                closeSelection()
             }
         }
         document.addEventListener('mousedown', handleClickOutside)
@@ -291,7 +311,7 @@ export default function BillingSection({ products }: BillingSectionProps) {
                     </div>
 
                     {selectedProduct && (
-                        <div className="bg-purple-50 dark:bg-purple-900/10 rounded-xl p-6 border border-purple-100 dark:border-purple-900/20 animate-in fade-in slide-in-from-top-4 duration-300 relative">
+                        <div className="bg-purple-50 dark:bg-purple-900/10 rounded-xl p-6 border border-purple-100 dark:border-purple-900/20 animate-in fade-in slide-in-from-top-4 duration-300 relative selected-product-container">
                             <button onClick={closeSelection} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600">
                                 <X size={20} />
                             </button>
@@ -305,7 +325,10 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                         value={qtyDetails}
                                         onFocus={(e) => e.target.select()}
                                         onClick={(e) => e.currentTarget.select()}
-                                        onChange={(e) => setQtyDetails(parseInt(e.target.value) || 0)}
+                                        onChange={(e) => setQtyDetails(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') addToCart()
+                                        }}
                                         className="w-full px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-500 outline-none"
                                     />
                                 </div>
@@ -317,6 +340,9 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                         value={manualPriceOverride}
                                         onFocus={(e) => e.target.select()}
                                         onChange={(e) => setManualPriceOverride(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') addToCart()
+                                        }}
                                         className="w-full px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-500 outline-none"
                                     />
                                 </div>
@@ -542,7 +568,34 @@ export default function BillingSection({ products }: BillingSectionProps) {
                                                                             {new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                         </span>
                                                                     </div>
-                                                                    <p className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">{bill.customerName || 'Walk-in'}</p>
+                                                                    {editingBillId === bill.id ? (
+                                                                        <div className="flex items-center gap-2 mt-1">
+                                                                            <input
+                                                                                autoFocus
+                                                                                value={editBillName}
+                                                                                onChange={e => setEditBillName(e.target.value)}
+                                                                                className="px-2 py-1 text-sm border border-zinc-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                                                                placeholder="Customer Name"
+                                                                                onKeyDown={(e) => e.key === 'Enter' && handleUpdateBillName(bill.id)}
+                                                                            />
+                                                                            <button onClick={() => handleUpdateBillName(bill.id)} className="text-green-600 hover:text-green-700 text-xs font-bold">Save</button>
+                                                                            <button onClick={() => setEditingBillId(null)} className="text-zinc-400 hover:text-zinc-600 text-xs">Cancel</button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex items-center gap-2 group/edit mt-1">
+                                                                            <p className="text-sm text-zinc-600 dark:text-zinc-400 font-medium">{bill.customerName || 'Walk-in'}</p>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setEditingBillId(bill.id)
+                                                                                    setEditBillName(bill.customerName || '')
+                                                                                }}
+                                                                                className="opacity-0 group-hover/edit:opacity-100 text-zinc-400 hover:text-blue-500 transition-opacity"
+                                                                                title="Edit Name"
+                                                                            >
+                                                                                <RefreshCw size={12} className="rotate-90" />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <div className="flex flex-col items-end gap-1">
                                                                     <p className="text-lg font-bold text-green-600 dark:text-green-400">
@@ -597,7 +650,8 @@ export default function BillingSection({ products }: BillingSectionProps) {
                         </div>
                     </div>
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     )
 }

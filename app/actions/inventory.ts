@@ -363,3 +363,17 @@ export async function deleteBill(billId: number) {
         return { success: false, error: 'Failed to delete bill' }
     }
 }
+
+export async function updateBillName(billId: number, name: string) {
+    try {
+        await prisma.bill.update({
+            where: { id: billId },
+            data: { customerName: name }
+        })
+        revalidatePath('/')
+        return { success: true }
+    } catch (error) {
+        console.error('Failed to update bill name:', error)
+        return { success: false, error: 'Failed to update bill name' }
+    }
+}
